@@ -14,7 +14,7 @@ import math
 from scene.gaussian_model import GaussianModel
 from utils.sh_utils import eval_sh
 
-def render(viewpoint_camera, pc : GaussianModel, pipe,white_background, scaling_modifier = 1.0, override_color = None):
+def render(viewpoint_camera, pc : GaussianModel, white_background, scaling_modifier = 1.0, override_color = None):
     """
     Render the scene. 
     
@@ -119,7 +119,6 @@ def render(viewpoint_camera, pc : GaussianModel, pipe,white_background, scaling_
         mean_coord_x = ((mean_ndc[..., 0] + 1) * camera.image_width - 1.0) * 0.5
         mean_coord_y = ((mean_ndc[..., 1] + 1) * camera.image_height - 1.0) * 0.5
         means2D = torch.stack([mean_coord_x, mean_coord_y], dim=-1) # 用OPENGL的坐标系计算2D高斯分布的p屏幕中心点坐标
-        means2D.retain_grad()
         rets = renderer(
             camera = camera, 
             means2D=means2D,
