@@ -121,6 +121,18 @@ class GaussianModel: # 定义Gaussian模型，初始化与Gaussian模型相关�
         if self.active_sh_degree < self.max_sh_degree:
             self.active_sh_degree += 1
 
+    def distCUDA2_pytorch(self,points,k=3):
+        # 计算所有点之间的距离
+        points_cpu = points.cpu()
+        dists = torch.cdist(points_cpu, points_cpu)
+        # 找到每个点的k个最近邻，返回它们的距离和索引
+        dists_knn, indices_knn = torch.topk(dists, k, largest=False)
+        # 计算距离的平方
+        dists_knn_squared = dists_knn.pow(2)
+        # 计算平均距离的平方
+        average_distances_squared = dists_knn_squared.mean(dim=-1).squeeze(dim=0)
+        return average_distances_squared.cuda()
+
     def create_from_pcd(self, pcd : BasicPointCloud, spatial_lr_scale : float):
         self.spatial_lr_scale = spatial_lr_scale # 场景的NeRF半径在创建Gauusian时作为空间低分辨率的缩放比例
         fused_point_cloud = torch.tensor(np.asarray(pcd.points)).float().cuda() #将输入点云数据的坐标转换为PyTorch张量，并移动到GPU上
@@ -131,7 +143,9 @@ class GaussianModel: # 定义Gaussian模型，初始化与Gaussian模型相关�
 
         print("Number of points at initialisation : ", fused_point_cloud.shape[0])
 
-        dist2 = torch.clamp_min(distCUDA2(torch.from_numpy(np.asarray(pcd.points)).float().cuda()), 0.0000001) # 计算点云中点之间的距离平方，并进行最小值截断，防止除以零
+        points = torch.from_numpy(np.asarray(pcd.points)).float().cuda()
+        dist2 = torch.clamp_min(self.distCUDA2_pytorch(points), 0.0000001) # 计算点云中点之间的距离平方，并进行最小值截断，防止除以零
+        # dist2 = torch.clamp_min(distCUDA2(torch.from_numpy(np.asarray(pcd.points)).float().cuda()), 0.0000001) # 计算点云中点之间的距离平方，并进行最小值截断，防止除以零
         scales = torch.log(torch.sqrt(dist2))[...,None].repeat(1, 3) # 计算每个点的缩放因子，以对应于点到点之间的距离
         rots = torch.zeros((fused_point_cloud.shape[0], 4), device="cuda") # 创建一个零张量，用于存储旋转信息，其形状为 (点的数量, 4)
         rots[:, 0] = 1 # 将旋转张量的第一个通道设置为1，其余通道设置为零
@@ -145,7 +159,7 @@ class GaussianModel: # 定义Gaussian模型，初始化与Gaussian模型相关�
         self._rotation = nn.Parameter(rots.requires_grad_(True))
         self._opacity = nn.Parameter(opacities.requires_grad_(True)) # 以上三行代码将缩放、旋转和不透明度信息转换为可优化的参数
         self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda") # 创建一个零张量，用于存储点云中每个点的最大2D半径，其形状为 (点的数量)
-
+    
     def training_setup(self, training_args): # 该方法用于设置训练参数和优化器
         self.percent_dense = training_args.percent_dense
         self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
@@ -401,6 +415,6 @@ class GaussianModel: # 定义Gaussian模型，初始化与Gaussian模型相关�
 
         torch.cuda.empty_cache()   # 清空GPU缓存
 
-    def add_densification_stats(self, viewspace_point_tensor, update_filter):
-        self.xyz_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter,:2], dim=-1, keepdim=True)
+    def add_densification_stats(self, viewspace_point_tensor_grad, update_filter):
+        self.xyz_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor_grad[update_filter,:2], dim=-1, keepdim=True)
         self.denom[update_filter] += 1

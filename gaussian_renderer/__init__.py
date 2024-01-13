@@ -32,8 +32,8 @@ def render(viewpoint_camera, pc : GaussianModel, pipe,white_background, scaling_
         rect = get_rect(means2D, radii, width=camera.image_width, height=camera.image_height)
         pix_coord = torch.stack(torch.meshgrid(torch.arange(camera.image_width), torch.arange(camera.image_height), indexing='xy'), dim=-1).to('cuda')
         render_color = torch.ones(*pix_coord.shape[:2], 3).to('cuda')
-        render_depth = torch.zeros(*pix_coord.shape[:2], 1).to('cuda')
-        render_alpha = torch.zeros(*pix_coord.shape[:2], 1).to('cuda') # 用于存储渲染结果
+        # render_depth = torch.zeros(*pix_coord.shape[:2], 1).to('cuda')
+        # render_alpha = torch.zeros(*pix_coord.shape[:2], 1).to('cuda') # 用于存储渲染结果
 
         # # test code
         # loss = radii.sum()
@@ -81,16 +81,10 @@ def render(viewpoint_camera, pc : GaussianModel, pipe,white_background, scaling_
                 # render_depth[h:h+TILE_SIZE, w:w+TILE_SIZE] = tile_depth.reshape(TILE_SIZE, TILE_SIZE, -1)
                 # render_alpha[h:h+TILE_SIZE, w:w+TILE_SIZE] = acc_alpha.reshape(TILE_SIZE, TILE_SIZE, -1) # 将计算出的结果存储到render_color, render_depth, render_alpha中
 
-
-        # loss = self.render_color.sum()
-        # loss.backward()
-        # print(loss)
         image = render_color.permute(2,0,1) # 将渲染结果转换为pytorch的格式
                 
         return {
             "render": image,
-            # "depth": self.render_depth,
-            # "alpha": self.render_alpha,
             "viewspace_points": means2D, # use to compute the grad
             "visibility_filter": radii > 0,
             "radii": radii
@@ -126,10 +120,6 @@ def render(viewpoint_camera, pc : GaussianModel, pipe,white_background, scaling_
         mean_coord_y = ((mean_ndc[..., 1] + 1) * camera.image_height - 1.0) * 0.5
         means2D = torch.stack([mean_coord_x, mean_coord_y], dim=-1) # 用OPENGL的坐标系计算2D高斯分布的p屏幕中心点坐标
         means2D.retain_grad()
-        # # test code
-        # loss = cov3d.sum()
-        # loss.backward()
-
         rets = renderer(
             camera = camera, 
             means2D=means2D,

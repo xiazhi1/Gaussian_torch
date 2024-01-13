@@ -50,20 +50,20 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress") # 用于显示进度条
     first_iter += 1
     for iteration in range(first_iter, opt.iterations + 1):   # 测试与网络gui交互      
-        if network_gui.conn == None:
-            network_gui.try_connect()
-        while network_gui.conn != None:
-            try:
-                net_image_bytes = None
-                custom_cam, do_training, pipe.convert_SHs_python, pipe.compute_cov3D_python, keep_alive, scaling_modifer = network_gui.receive()
-                if custom_cam != None:
-                    net_image = render(custom_cam, gaussians, pipe, background, scaling_modifer)["render"]
-                    net_image_bytes = memoryview((torch.clamp(net_image, min=0, max=1.0) * 255).byte().permute(1, 2, 0).contiguous().cpu().numpy())
-                network_gui.send(net_image_bytes, dataset.source_path)
-                if do_training and ((iteration < int(opt.iterations)) or not keep_alive):
-                    break
-            except Exception as e:
-                network_gui.conn = None 
+        # if network_gui.conn == None:
+        #     network_gui.try_connect()
+        # while network_gui.conn != None:
+        #     try:
+        #         net_image_bytes = None
+        #         custom_cam, do_training, pipe.convert_SHs_python, pipe.compute_cov3D_python, keep_alive, scaling_modifer = network_gui.receive()
+        #         if custom_cam != None:
+        #             net_image = render(custom_cam, gaussians, pipe, background, scaling_modifer)["render"]
+        #             net_image_bytes = memoryview((torch.clamp(net_image, min=0, max=1.0) * 255).byte().permute(1, 2, 0).contiguous().cpu().numpy())
+        #         network_gui.send(net_image_bytes, dataset.source_path)
+        #         if do_training and ((iteration < int(opt.iterations)) or not keep_alive):
+        #             break
+        #     except Exception as e:
+        #         network_gui.conn = None 
         iter_start.record()
 
         gaussians.update_learning_rate(iteration)
@@ -89,11 +89,14 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image)) # 计算loss SSIM
         loss.backward() 
 
-        grad = gaussians._xyz.grad
+        grad = viewspace_point_tensor.grad
         # test to get the non zero grad
         non_zero_row_indices = torch.any(grad != 0, axis=1)
         non_zero_rows = grad[non_zero_row_indices]
         # print(non_zero_rows)
+        viewspace_point_tensor_grad = torch.cat([grad, torch.zeros((grad.shape[0], 1), dtype=grad.dtype).cuda()], dim=1) # 由于视空间坐标是三维的，而梯度是二维的，所以需要在梯度后面加一个0
+        viewspace_point_tensor_grad = torch.tensor(viewspace_point_tensor_grad, dtype=viewspace_point_tensor.dtype) # 转换为tensor
+
         iter_end.record()
 
         with torch.no_grad(): 
@@ -111,18 +114,18 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
                 scene.save(iteration)
 
-            # # Densification
-            # if iteration < opt.densify_until_iter: # 如果iteration小于densify_until_iter，就进行高斯点云的密度增加
-            #     # Keep track of max radii in image-space for pruning
-            #     gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter]) # 更新最大半径
-            #     gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter) # 更新视空间坐标和可见性
+            # Densification
+            if iteration < opt.densify_until_iter: # 如果iteration小于densify_until_iter，就进行高斯点云的密度增加
+                # Keep track of max radii in image-space for pruning
+                gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter]) # 更新最大半径
+                gaussians.add_densification_stats(viewspace_point_tensor_grad, visibility_filter) # 更新视空间坐标和可见性
 
-            #     if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0: # 如果当前迭代大于指定的开始密集化的迭代数，并且当前迭代是密集化间隔的倍数，那么就进行密集化和修剪操作
-            #         size_threshold = 20 if iteration > opt.opacity_reset_interval else None
-            #         gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold)
+                if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0: # 如果当前迭代大于指定的开始密集化的迭代数，并且当前迭代是密集化间隔的倍数，那么就进行密集化和修剪操作
+                    size_threshold = 20 if iteration > opt.opacity_reset_interval else None
+                    gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold)
                 
-            #     if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter): # 如果当前迭代是透明度重置间隔的倍数，或者是白色背景并且当前迭代等于指定的开始密集化的迭代数，那么就重置透明度
-            #         gaussians.reset_opacity()
+                if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter): # 如果当前迭代是透明度重置间隔的倍数，或者是白色背景并且当前迭代等于指定的开始密集化的迭代数，那么就重置透明度
+                    gaussians.reset_opacity()
 
             # Optimizer step
             if iteration < opt.iterations:
@@ -223,7 +226,7 @@ if __name__ == "__main__":
     safe_state(args.quiet)
 
     # Start GUI server, configure and run training
-    network_gui.init(args.ip, args.port)
+    # network_gui.init(args.ip, args.port)
     torch.autograd.set_detect_anomaly(args.detect_anomaly)
     training(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from)
 
