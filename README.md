@@ -15,5 +15,6 @@ Now we support 1000 iterations in a TiTanXP in 1.5 hours around , and its SSIM i
 
 ## reference
 
-1. [](https://github.com/graphdeco-inria/gaussian-splatting)
-2. [](https://github.com/hbb1/torch-splatting)
+1. [https://github.com/graphdeco-inria/gaussian-splatting](https://github.com/graphdeco-inria/gaussian-splatting)
+2. [https://github.com/hbb1/torch-splatting](https://github.com/hbb1/torch-splatting)
+3. [https://github.com/antimatter15/splat](https://github.com/antimatter15/splat)
