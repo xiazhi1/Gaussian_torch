@@ -38,6 +38,8 @@ def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParam
     with torch.no_grad(): # 忽略梯度计算，用于推理，节省内存
         gaussians = GaussianModel(dataset.sh_degree)
         scene = Scene(dataset, gaussians, load_iteration=iteration, shuffle=False) # 加载场景与Gaussian模型
+        if iteration <= 3000:   # 默认球谐函数为3
+            gaussians.active_sh_degree = (iteration-1) // 1000 # 前3000次迭代的球谐函数为0，1，2，不为3，需要重新设置
 
         bg_color = [1,1,1] if dataset.white_background else [0, 0, 0]
         background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")

@@ -10,7 +10,7 @@ After your training , if you want it to look in web , you can download your outp
 
 Noticed that because of CUDA memory , we all reduce the image resolution to 0.125 by using args of "-r" "8"
 
-Now we support 1000 iterations in a TiTanXP in 1.5 hours around , and its SSIM is 0.45, PSNR is 19.68
+Now we support 1000 iterations in a TiTanX in 1.5 hours around , and its SSIM is 0.45, PSNR is 19.68
 
 
 ## reference
