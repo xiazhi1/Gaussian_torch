@@ -152,7 +152,7 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
         # 记录梯度范数
         grads = scene.gaussians.xyz_gradient_accum / scene.gaussians.denom
         grads[grads.isnan()] = 0.0 # 计算梯度并将梯度张量中的NaN值替换为0
-        grads_record = torch.norm(grads, dim=-1).mean().numpy()
+        grads_record = torch.norm(grads, dim=-1).mean().cpu().numpy()
         tb_writer.add_scalar('grads_norm', grads_record, iteration)
          # 记录当前xyz的学习率
         current_lr = scene.gaussians.optimizer.param_groups[0]['lr']
